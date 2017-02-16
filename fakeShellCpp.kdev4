@@ -1,0 +1,4 @@
+[Project]
+Name=fakeShellCpp
+Manager=KDevCMakeManager
+VersionControl=kdevgit
