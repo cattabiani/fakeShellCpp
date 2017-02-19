@@ -3,34 +3,46 @@
 
 #include <memory>
 #include <list>
+
 #include "item.h"
+#include "errCodes.h"
 
 class FileSystem
 {
 public:
     FileSystem();
     
-    void pwd() const;
+    std::string pwd() const;
     
-    void ls() const;
-    
-    // wrapper
-    void cd(std::string fullPath);
+    std::string ls() const;
     
     // wrapper
-    void mkdir(std::string fullPath) { mkItem(fullPath, ItemType::IT_DIR); };
+    std::string cd(std::string fullPath);
+    
+    // wrapper, "name" is not empty only in case of errors
+    std::list<std::string> mkdir(std::string fullPath) 
+    { 
+        std::list<std::string> errList = mkItem(fullPath, ItemType::IT_DIR); 
+        for (auto ierr : errList) {ierr = "mkdir: " + ierr; }
+        return errList;
+    };
     
     // wrapper
-    void touch(std::string fullPath) { mkItem(fullPath, ItemType::IT_FILE); };
+    std::list<std::string> touch(std::string fullPath) 
+    { 
+        std::list<std::string> errList = mkItem(fullPath, ItemType::IT_FILE); 
+        for (auto ierr : errList) {ierr = "touch: " + ierr; }
+        return errList;
+    };
     
 private:
     
-    bool cd(std::string name, std::shared_ptr<Dir> &localDir, std::list<std::string> &localDirPath_)  const;
+    ERRCODES cd(std::string name, std::shared_ptr<Dir> &localDir, std::list<std::string> &localDirPath_)  const;
     
-    void mkItem(std::string name, std::shared_ptr<Dir> localDir, std::list<std::string> localDirPath_, ItemType itemType);
+    ERRCODES mkItem(std::string name, std::shared_ptr<Dir> localDir, std::list<std::string> localDirPath_, ItemType itemType);
     
     // wrapper
-    void mkItem(std::string fullPath, ItemType itemType);
+    std::list<std::string> mkItem(std::string fullPath, ItemType itemType);
     
     // --- variables --- //
     std::shared_ptr<Dir> currDir_;

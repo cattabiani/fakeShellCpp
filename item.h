@@ -1,3 +1,6 @@
+#ifndef ITEM_H
+#define ITEM_H
+
 #include <unordered_map>
 #include <memory>
 
@@ -33,8 +36,9 @@ class Dir : public Item
 {
 public:
     //public methods
-    Dir() : Item(ItemType::IT_DIR) {}
+    Dir(std::shared_ptr<Dir> parentDir) : Item(ItemType::IT_DIR) { itemList_[".."] = parentDir; }
     ~Dir() { itemList_.clear(); }
     //public variables
     std::unordered_map<std::string, std::shared_ptr<Item> > itemList_;
 };
+#endif 

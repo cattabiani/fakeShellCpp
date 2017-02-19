@@ -8,7 +8,7 @@
 // ---
 FileSystem::FileSystem()
 {
-    root_ = std::make_shared<Dir>();
+    root_ = std::make_shared<Dir>(nullptr);
     root_->itemList_["."] = root_;
     root_->itemList_[".."] = nullptr;
     
@@ -18,108 +18,55 @@ FileSystem::FileSystem()
 // ---
 // --- pwd
 // ---
-void FileSystem::pwd() const
+std::string FileSystem::pwd() const
 {
-    if (currDirPath_.size() == 0) {std::cout << '/'; }
-    else { for (auto const &ii : currDirPath_) { std::cout << '/' << ii; } }
-    
-    std::cout << std::endl;
+    std::string out;
+    if (currDirPath_.size() == 0) {out += '/'; }
+    else { for (auto const &ii : currDirPath_) { out += '/' + ii; } }
+
+    return out;
 }
 
 // ---
 // --- ls
 // ---
-void FileSystem::ls() const
+std::string FileSystem::ls() const
 {
+    std::string out;
     for (auto const &ii : currDir_->itemList_)
     {
-        std::cout << ii.first << ' ';
+        out += ii.first + ' ';
     }
-    std::cout << std::endl;
+    
+    return out;
 }
 
 // ---
 // --- cd
 // ---
-bool FileSystem::cd(std::string name, std::shared_ptr<Dir> &localDir, std::list<std::string> &localDirPath) const
+ERRCODES FileSystem::cd(std::string name, std::shared_ptr<Dir> &localDir, std::list<std::string> &localDirPath) const
 {
     std::unordered_map<std::string, std::shared_ptr<Item> >::iterator elem = localDir->itemList_.find(name);
     
-    if (elem  == localDir->itemList_.end() ) 
-    { 
-        std::cout << "No such file or directory\n"; 
-        return true; 
-    } 
-    
-    if (elem->second == nullptr)
-    {
-        // I do not check to be in the root directory to increase performances
-        return false;
-    }
+    if (elem  == localDir->itemList_.end() ) { return ERRCODES::NOITEM; } 
+    // We are in the root directory, I do not check to be in the root directory to increase performances
+    if (elem->second == nullptr) { return ERRCODES::ALLOK; }
     
     if (elem->second->itTyp_ == ItemType::IT_DIR)
     {
         localDir = std::static_pointer_cast<Dir>(elem->second);
         
-        if (name == "..")
-        {
-            localDirPath.pop_back();
-        }
-        else if (name != ".")
-        {
-            localDirPath.push_back(name);
-        }
-        return false;
+        if (name == "..") { localDirPath.pop_back(); }
+        else if (name != ".") { localDirPath.push_back(name); }
+        return ERRCODES::ALLOK;
     }
-    else 
-    { 
-        std::cout << "cd: " << name << ": Not a directory\n"; 
-        return true; 
-    }
+    else { return ERRCODES::NOTDIR; }
 }
-
-// ---
-// --- mkItem
-// ---
-void FileSystem::mkItem(std::string name, const std::shared_ptr<Dir> localDir, const std::list<std::string> localDirPath, ItemType itemType)
-{
-    // pesky empty name
-    if (name.empty() ) {std::cout << ((itemType == ItemType::IT_DIR) ? "mkdir" : "touch") << ": missing operand\n"; return; }
-    
-    std::unordered_map<std::string, std::shared_ptr<Item> >::iterator elem = localDir->itemList_.find(name);
-    
-    if (elem  == localDir->itemList_.end() )
-    {
-        switch (itemType)
-        {
-            case ItemType::IT_DIR : 
-            { 
-                auto newDir = std::make_shared<Dir>(); 
-                localDir->itemList_[name] = newDir;
-                newDir->itemList_["."] = newDir;
-                newDir->itemList_[".."] = localDir;
-                break; 
-                
-            }
-            case ItemType::IT_FILE : { localDir->itemList_[name] = std::make_shared<File>(); break; }
-        }
-    }
-    else
-    {
-        switch (itemType)
-        {
-            case ItemType::IT_DIR : { std::cout << "mkdir: cannot create directory '" << name << "': File exists"; break; }
-            // the next feature is different from bash because touch changes also the access time
-            case ItemType::IT_FILE : { std::cout << "touch: cannot create directory '" << name << "': File exists"; break; }
-        }
-    }
-}
-
 
 // ---
 // --- cd - wrapper
 // ---
-void FileSystem::cd(std::string fullPath)
+std::string FileSystem::cd(std::string fullPath)
 {
     std::list<std::string> pathList = Utils::Parser(fullPath, ' ', '\\', true);
     
@@ -128,7 +75,7 @@ void FileSystem::cd(std::string fullPath)
     {
         currDir_ = root_;
         currDirPath_.clear();
-        return;
+        return "";
     }
     
     std::string path = pathList.front();
@@ -150,29 +97,72 @@ void FileSystem::cd(std::string fullPath)
     std::list<std::string> nameList = Utils::Parser(path, '/');
 
     // I do not initialize err because cd always overwrites (or breaks)
-    bool err;
+    ERRCODES err;
     for(auto name : nameList)
     {
         err = cd(name, localDir, localDirPath);
-        if (err) {return; }
+        if (err != ERRCODES::ALLOK) { return "cd: '" + path  + "': " + ErrCodes::Msg(err) + "\n"; }
     }
 
     currDir_ = localDir;
     currDirPath_ = localDirPath;
+    
+    return "";
+}
+
+// ---
+// --- mkItem
+// ---
+ERRCODES FileSystem::mkItem(std::string name, const std::shared_ptr<Dir> localDir, const std::list<std::string> localDirPath, ItemType itemType)
+{
+    // pesky empty name
+    if (name.empty() ) {return ERRCODES::NOOPERAND; }
+    
+    std::unordered_map<std::string, std::shared_ptr<Item> >::iterator elem = localDir->itemList_.find(name);
+    
+    if (elem  == localDir->itemList_.end() )
+    {
+        switch (itemType)
+        {
+            case ItemType::IT_DIR : 
+            { 
+                auto newDir = std::make_shared<Dir>(localDir); 
+                localDir->itemList_[name] = newDir;
+                newDir->itemList_["."] = newDir;
+                break; 
+            }
+            case ItemType::IT_FILE : { localDir->itemList_[name] = std::make_shared<File>(); break; }
+        }
+    }
+    else { return ERRCODES::ITEXISTS; }
+    return ERRCODES::ALLOK;
 }
 
 // ---
 // --- mkItem - wrapper
 // ---
-void FileSystem::mkItem(std::string fullPath, ItemType itemType)
+std::list<std::string> FileSystem::mkItem(std::string fullPath, ItemType itemType)
 {
+    std::string itemName;
+    if (itemType == ItemType::IT_DIR) itemName = "directory";
+    else itemName = "directory";
+    
+    std::list<std::string> errList;
     std::list<std::string> pathList = Utils::Parser(fullPath, ' ', '\\');
     
     // pesky empty case
-    if (pathList.size() == 0) {return; }
+    if (pathList.size() == 0) 
+    {
+        errList.push_back(ErrCodes::Msg(ERRCODES::NOOPERAND)); 
+        return errList; 
+    }
     
     for (auto path : pathList)
     {
+        
+        // check that I am not creating a file with a dir address
+        if (path.back() == '/' && itemType == ItemType::IT_FILE) { errList.push_back("cannot create file ‘" + path  + "': " + ErrCodes::Msg(ERRCODES::NOOPERAND)); continue; }
+        
         std::shared_ptr<Dir> localDir;
         std::list<std::string> localDirPath;
         
@@ -192,13 +182,19 @@ void FileSystem::mkItem(std::string fullPath, ItemType itemType)
         
         // I do not initialize err because cd always overwrites (or breaks)
         // no auto because I need to skip the last element
-        bool err;
+        ERRCODES err = ERRCODES::ALLOK;
         for(std::list<std::string>::const_iterator name = nameList.cbegin(); name != --nameList.cend(); ++name)
         {
             err = cd(*name, localDir, localDirPath);
-            if (err) {break; }
+            if (err != ERRCODES::ALLOK) { errList.push_back("cannot create " + itemName + " ‘" + path  + "': " + ErrCodes::Msg(err)); break; }
         }
         
-        if (!err) { mkItem(nameList.back(), localDir, localDirPath, itemType); }
+        if (err == ERRCODES::ALLOK) 
+        {
+            err = mkItem(nameList.back(), localDir, localDirPath, itemType); 
+            if (err != ERRCODES::ALLOK) {  errList.push_back("cannot create " + itemName + " ‘" + path  + "': " + ErrCodes::Msg(err)); }
+        }
     }
+
+    return errList;
 }
